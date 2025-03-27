@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Command">
+    <Name>Claude MCP Integration</Name>
+    <Assembly>path_to_your_plugin\ClaudeMCP.dll</Assembly>
+    <ClientId>your_guid_here</ClientId>
+    <FullClassName>RevitPlugin.ClaudeRevitCommand</FullClassName>
+    <Text>Ask Claude</Text>
+    <Description>Integrate Claude AI with Revit</Description>
+    <VendorId>Your Company</VendorId>
+    <VendorDescription>Your Company Description</VendorDescription>
+  </AddIn>
+</RevitAddIns> 
