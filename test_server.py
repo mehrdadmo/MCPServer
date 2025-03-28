@@ -1,7 +1,7 @@
-from fastapi import FastAPI, WebSocket, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
+from fastapi import FastAPI, HTTPException, WebSocket
 from pydantic import BaseModel
 from typing import List, Optional, Dict
+import uvicorn
 import logging
 from dotenv import load_dotenv
 import os
@@ -17,20 +17,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
+# Initialize FastAPI app with docs
 app = FastAPI(
     title="Claude MCP Revit Server",
     description="Server for integrating Claude AI with Autodesk Revit",
-    version=os.getenv("REVIT_PLUGIN_VERSION", "1.0.0")
-)
-
-# Configure CORS
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    version="1.0.0",
+    docs_url="/docs",
+    redoc_url="/redoc"
 )
 
 # Data models
@@ -45,27 +38,31 @@ class RevitResponse(BaseModel):
     suggested_actions: List[str]
     error: Optional[str] = None
 
+class HealthResponse(BaseModel):
+    status: str
+    version: str
+    environment: str
+
 # WebSocket connections
 active_connections: List[WebSocket] = []
 
-@app.on_event("startup")
-async def startup_event():
-    logger.info("Starting up the Claude MCP Revit Server")
-
-@app.on_event("shutdown")
-async def shutdown_event():
-    logger.info("Shutting down the Claude MCP Revit Server")
-
-@app.get("/")
+@app.get("/", response_model=Dict[str, str])
 async def root():
+    """Root endpoint returning welcome message"""
     return {"message": "Welcome to Claude MCP Revit Server"}
 
-@app.get("/health")
+@app.get("/health", response_model=HealthResponse)
 async def health_check():
-    return {"status": "healthy"}
+    """Health check endpoint"""
+    return HealthResponse(
+        status="healthy",
+        version="1.0.0",
+        environment=os.getenv("ENVIRONMENT", "development")
+    )
 
 @app.post("/process_revit_query", response_model=RevitResponse)
 async def process_revit_query(request: RevitRequest):
+    """Process Revit-related queries using Claude AI"""
     try:
         logger.info(f"Processing Revit query: {request.prompt}")
         
@@ -84,6 +81,7 @@ async def process_revit_query(request: RevitRequest):
 
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket):
+    """WebSocket endpoint for real-time communication"""
     await websocket.accept()
     active_connections.append(websocket)
     try:
@@ -95,4 +93,32 @@ async def websocket_endpoint(websocket: WebSocket):
     except Exception as e:
         logger.error(f"WebSocket error: {str(e)}")
     finally:
-        active_connections.remove(websocket) 
+        active_connections.remove(websocket)
+
+@app.get("/api/revit/elements", response_model=Dict)
+async def get_revit_elements():
+    """Get available Revit elements"""
+    return {
+        "walls": ["Basic Wall", "Curtain Wall", "Stacked Wall"],
+        "floors": ["Basic Floor", "Slab", "Foundation"],
+        "roofs": ["Basic Roof", "Extrusion Roof"]
+    }
+
+@app.get("/api/revit/properties", response_model=Dict)
+async def get_revit_properties():
+    """Get available Revit properties"""
+    return {
+        "dimensions": ["Length", "Width", "Height", "Area"],
+        "materials": ["Concrete", "Steel", "Wood", "Glass"],
+        "parameters": ["Mark", "Comments", "Phase"]
+    }
+
+if __name__ == "__main__":
+    print("Starting server on http://127.0.0.1:4000")
+    print("API documentation available at http://127.0.0.1:4000/docs")
+    uvicorn.run(
+        "test_server:app",
+        host="127.0.0.1",
+        port=4000,
+        reload=True
+    ) 
