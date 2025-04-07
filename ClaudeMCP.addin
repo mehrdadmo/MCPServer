@@ -10,4 +10,14 @@
     <VendorId>Your Company</VendorId>
     <VendorDescription>Your Company Description</VendorDescription>
   </AddIn>
+  <AddIn Type="Command">
+    <Name>AI Design</Name>
+    <Assembly>revit_plugin\ClaudeMCP.dll</Assembly>
+    <ClientId>9e4d2c1b-5f6e-4a3d-8c7b-1d2e3f4a5b6c</ClientId>
+    <FullClassName>RevitPlugin.AIDesignCommand</FullClassName>
+    <Text>AI Design</Text>
+    <Description>Generate Revit models using natural language</Description>
+    <VendorId>Your Company</VendorId>
+    <VendorDescription>Your Company Description</VendorDescription>
+  </AddIn>
 </RevitAddIns> 
