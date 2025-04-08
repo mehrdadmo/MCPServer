@@ -14,7 +14,7 @@ An AI-powered Revit plugin that generates architectural designs based on natural
 ## Requirements
 
 - Python 3.7 or higher
-- Autodesk Revit 2024
+- Autodesk Revit 2024 or 2025
 - Anthropic API key for Claude AI
 
 ## Installation
@@ -30,8 +30,10 @@ python build_plugin.py
 ```
 
 3. Copy the plugin to your Revit add-ins folder:
-- Windows: `C:\Users\%USERNAME%\AppData\Roaming\Autodesk\Revit\Autodesk Revit 2024\Addins\ClaudeMCP`
-- Mac: `~/Library/Application Support/Autodesk/Revit/Autodesk Revit 2024/Addins/`
+- Windows (Revit 2024): `C:\Users\%USERNAME%\AppData\Roaming\Autodesk\Revit\Autodesk Revit 2024\Addins\ClaudeMCP`
+- Windows (Revit 2025): `C:\Users\%USERNAME%\AppData\Roaming\Autodesk\Revit\Autodesk Revit 2025\Addins\ClaudeMCP`
+- Mac (Revit 2024): `~/Library/Application Support/Autodesk/Revit/Autodesk Revit 2024/Addins/`
+- Mac (Revit 2025): `~/Library/Application Support/Autodesk/Revit/Autodesk Revit 2025/Addins/`
 
 4. Set up your Anthropic API key:
 ```bash
@@ -64,6 +66,12 @@ python test_ai_design.py
 - `build_plugin.py`: Build script
 - `test_ai_design.py`: Test script
 - `README.md`: Project documentation
+
+## Compatibility
+
+The plugin is compatible with:
+- Autodesk Revit 2024
+- Autodesk Revit 2025
 
 ## Contributing
 
