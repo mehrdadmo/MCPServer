@@ -13,9 +13,11 @@ if %errorLevel% == 0 (
     exit /b 1
 )
 
-REM Create installation directory
+REM Set installation directory
 set INSTALL_DIR=%APPDATA%\Autodesk\Revit\Autodesk Revit 2025\Addins\ClaudeMCP
 echo Creating installation directory: %INSTALL_DIR%
+
+REM Create directory if it doesn't exist
 if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
 
 REM Copy files
