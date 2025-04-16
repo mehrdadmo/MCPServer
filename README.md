@@ -1,86 +1,77 @@
-# Claude MCP Revit Integration
+# Claude MCP Revit Plugin
 
-An AI-powered Revit plugin that generates architectural designs based on natural language descriptions using Claude AI.
+A Python-based Revit plugin that integrates Claude AI for architectural design assistance and analysis.
 
 ## Features
 
-- Natural language processing for design requirements
-- AI-powered architectural design generation
-- Automatic Revit model creation
-- Support for rooms, walls, doors, and windows
-- Automatic dimensioning and annotations
-- Modern UI with progress tracking
+- Natural language processing of Revit elements
+- AI-powered design suggestions
+- Real-time analysis of selected elements
+- Easy-to-use interface in Revit's Add-ins tab
 
 ## Requirements
 
-- Python 3.7 or higher
-- Autodesk Revit 2024 or 2025
-- Anthropic API key for Claude AI
+- Revit 2024 or 2025
+- Python 3.10 or later
+- Required Python packages:
+  ```
+  pip install requests python-dotenv
+  ```
 
 ## Installation
 
-1. Install the required Python packages:
-```bash
-pip install -r requirements.txt
-```
+1. Clone this repository:
+   ```bash
+   git clone https://github.com/mehrdadmo/MCPServer.git
+   cd MCPServer
+   ```
 
 2. Build the plugin:
-```bash
-python build_plugin.py
-```
+   ```bash
+   python build_plugin.py
+   ```
 
-3. Copy the plugin to your Revit add-ins folder:
-- Windows (Revit 2024): `C:\Users\%USERNAME%\AppData\Roaming\Autodesk\Revit\Autodesk Revit 2024\Addins\ClaudeMCP`
-- Windows (Revit 2025): `C:\Users\%USERNAME%\AppData\Roaming\Autodesk\Revit\Autodesk Revit 2025\Addins\ClaudeMCP`
-- Mac (Revit 2024): `~/Library/Application Support/Autodesk/Revit/Autodesk Revit 2024/Addins/`
-- Mac (Revit 2025): `~/Library/Application Support/Autodesk/Revit/Autodesk Revit 2025/Addins/`
+3. Install the plugin:
+   ```bash
+   # Windows
+   xcopy /E /I dist\ClaudeMCP "%APPDATA%\Autodesk\Revit\Addins\2025\ClaudeMCP"
+   ```
 
-4. Set up your Anthropic API key:
-```bash
-export ANTHROPIC_API_KEY="your-api-key"
-```
+4. Configure Python in Revit:
+   - Open Revit
+   - Go to Manage → Python
+   - Add the plugin directory to Python path:
+     ```
+     %APPDATA%\Autodesk\Revit\Addins\2025\ClaudeMCP
+     ```
+
+5. Restart Revit
 
 ## Usage
 
-1. Start Revit and open a new project
-2. Go to the Add-ins tab
-3. Click the "AI Design" button
-4. Enter your design requirements in natural language
-5. Wait for the AI to generate and create the design
-6. Review and modify the generated design as needed
+1. Open a Revit project
+2. Select elements you want to analyze
+3. Click the "Ask Claude" button in the Add-ins tab
+4. View Claude's analysis and suggestions
 
-## Testing
+## Configuration
 
-Run the test script to verify the AI design generation:
-```bash
-python test_ai_design.py
+Create a `.env` file in the plugin directory with:
+```
+MCP_SERVER_URL=http://localhost:8000
 ```
 
-## Project Structure
+## Development
 
-- `revit_plugin/`: Main plugin package
-  - `__init__.py`: Package initialization
-  - `ai_design_command.py`: AI design command implementation
-  - `claude_integration.py`: Claude AI integration
-  - `requirements.txt`: Python dependencies
-- `build_plugin.py`: Build script
-- `test_ai_design.py`: Test script
-- `README.md`: Project documentation
-
-## Compatibility
-
-The plugin is compatible with:
-- Autodesk Revit 2024
-- Autodesk Revit 2025
-
-## Contributing
-
-1. Fork the repository
-2. Create a feature branch
-3. Commit your changes
-4. Push to the branch
-5. Create a Pull Request
+- `revit_plugin/` - Main plugin code
+- `build_plugin.py` - Build script
+- `ClaudeMCP.addin` - Revit add-in manifest
 
 ## License
 
-This project is licensed under the MIT License - see the LICENSE file for details.
+MIT License
+
+## Support
+
+For issues and feature requests, please visit:
+https://github.com/mehrdadmo/MCPServer/issues

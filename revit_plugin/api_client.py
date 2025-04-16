@@ -5,6 +5,7 @@ from System.Collections.Generic import Dictionary
 import logging
 from dotenv import load_dotenv
 import os
+from typing import Dict, Any, List
 
 # Load environment variables
 load_dotenv()
@@ -16,6 +17,46 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
+
+class APIClient:
+    def __init__(self):
+        self.base_url = os.getenv('MCP_SERVER_URL', 'http://localhost:8000')
+        logger.info(f"Initializing API client with server URL: {self.base_url}")
+
+    def process_revit_query(self, elements_data):
+        try:
+            response = requests.post(
+                f"{self.base_url}/process_revit_query",
+                json={"elements": elements_data}
+            )
+            response.raise_for_status()
+            return response.json().get('response', 'No response from server')
+        except Exception as e:
+            logger.error(f"Error processing Revit query: {str(e)}")
+            return f"Error communicating with server: {str(e)}"
+
+    def generate_model(self, description: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
+        """Request model generation from the server"""
+        try:
+            response = requests.post(
+                f"{self.base_url}/generate_revit_model",
+                json={
+                    "description": description,
+                    "requirements": requirements
+                }
+            )
+            response.raise_for_status()
+            return response.json()
+        except Exception as e:
+            logger.error(f"Error generating model: {str(e)}")
+            raise
+
+    def check_server_health(self):
+        try:
+            response = requests.get(f"{self.base_url}/health")
+            return response.status_code == 200
+        except:
+            return False
 
 class ClaudeMCPClient:
     def __init__(self, base_url="http://localhost:5001"):

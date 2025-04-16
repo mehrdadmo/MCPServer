@@ -1,4 +1,5 @@
 from fastapi import FastAPI, HTTPException, WebSocket
+from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from typing import List, Optional, Dict, Any
 import uvicorn
@@ -6,6 +7,8 @@ import logging
 from dotenv import load_dotenv
 import os
 from claude_integration import ClaudeIntegration
+import json
+import random
 
 # Load environment variables
 load_dotenv()
@@ -25,6 +28,15 @@ app = FastAPI(
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
+)
+
+# Enable CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 # Initialize Claude integration
@@ -65,6 +77,17 @@ class ModelGenerationResponse(BaseModel):
     model_data: Dict[str, Any]
     message: str
     error: Optional[str] = None
+
+class DesignRequirements(BaseModel):
+    area: float
+    bedrooms: int
+    bathrooms: int
+    style: str
+    additional_requirements: str
+
+class DesignRequest(BaseModel):
+    action: str
+    requirements: DesignRequirements
 
 # WebSocket connections
 active_connections: List[WebSocket] = []
@@ -187,12 +210,129 @@ async def generate_revit_model(request: ModelGenerationRequest):
             error=str(e)
         )
 
+def generate_floor_plan(requirements: DesignRequirements) -> Dict[str, Any]:
+    # Calculate room sizes based on total area
+    total_area = requirements.area
+    bedroom_area = total_area * 0.3 / requirements.bedrooms
+    bathroom_area = total_area * 0.2 / requirements.bathrooms
+    living_area = total_area * 0.5
+
+    # Generate walls
+    walls = []
+    wall_types = {
+        "exterior": 1,
+        "interior": 2
+    }
+
+    # Create exterior walls
+    length = (total_area ** 0.5) * 1.2  # Approximate length of the house
+    width = total_area / length
+
+    # Exterior walls
+    walls.extend([
+        {"start": {"x": 0, "y": 0}, "end": {"x": length, "y": 0}, "type_id": wall_types["exterior"], "level_id": 1},
+        {"start": {"x": length, "y": 0}, "end": {"x": length, "y": width}, "type_id": wall_types["exterior"], "level_id": 1},
+        {"start": {"x": length, "y": width}, "end": {"x": 0, "y": width}, "type_id": wall_types["exterior"], "level_id": 1},
+        {"start": {"x": 0, "y": width}, "end": {"x": 0, "y": 0}, "type_id": wall_types["exterior"], "level_id": 1}
+    ])
+
+    # Create interior walls for bedrooms
+    bedroom_width = (bedroom_area ** 0.5) * 0.8
+    bedroom_length = bedroom_area / bedroom_width
+
+    for i in range(requirements.bedrooms):
+        x_offset = length * 0.2 + i * (bedroom_length + 2)
+        walls.extend([
+            {"start": {"x": x_offset, "y": 0}, "end": {"x": x_offset, "y": bedroom_width}, "type_id": wall_types["interior"], "level_id": 1},
+            {"start": {"x": x_offset, "y": bedroom_width}, "end": {"x": x_offset + bedroom_length, "y": bedroom_width}, "type_id": wall_types["interior"], "level_id": 1},
+            {"start": {"x": x_offset + bedroom_length, "y": bedroom_width}, "end": {"x": x_offset + bedroom_length, "y": 0}, "type_id": wall_types["interior"], "level_id": 1}
+        ])
+
+    # Create rooms
+    rooms = []
+    for i in range(requirements.bedrooms):
+        x_offset = length * 0.2 + i * (bedroom_length + 2)
+        rooms.append({
+            "name": f"Bedroom {i+1}",
+            "boundary": [
+                {"x": x_offset, "y": 0},
+                {"x": x_offset + bedroom_length, "y": 0},
+                {"x": x_offset + bedroom_length, "y": bedroom_width},
+                {"x": x_offset, "y": bedroom_width}
+            ]
+        })
+
+    # Create bathroom
+    bathroom_width = (bathroom_area ** 0.5) * 0.8
+    bathroom_length = bathroom_area / bathroom_width
+    x_offset = length * 0.8
+    rooms.append({
+        "name": "Bathroom",
+        "boundary": [
+            {"x": x_offset, "y": width - bathroom_width},
+            {"x": x_offset + bathroom_length, "y": width - bathroom_width},
+            {"x": x_offset + bathroom_length, "y": width},
+            {"x": x_offset, "y": width}
+        ]
+    })
+
+    # Create openings (doors and windows)
+    openings = []
+    door_type = 3  # Assuming this is the door type ID
+    window_type = 4  # Assuming this is the window type ID
+
+    # Add doors to bedrooms
+    for i in range(requirements.bedrooms):
+        x_offset = length * 0.2 + i * (bedroom_length + 2)
+        openings.append({
+            "type_id": door_type,
+            "location": {"x": x_offset + bedroom_length/2, "y": 0},
+            "host_id": walls[i*3]["type_id"]  # Reference to the wall
+        })
+
+    # Add windows
+    window_spacing = length / 4
+    for i in range(3):  # Add 3 windows to exterior walls
+        openings.append({
+            "type_id": window_type,
+            "location": {"x": window_spacing * (i+1), "y": 0},
+            "host_id": walls[0]["type_id"]
+        })
+
+    return {
+        "levels": [{"elevation": 0}],
+        "walls": walls,
+        "rooms": rooms,
+        "openings": openings
+    }
+
+@app.post("/generate")
+async def generate_design(request: DesignRequest):
+    if request.action != "generate_design":
+        raise HTTPException(status_code=400, detail="Invalid action")
+
+    try:
+        design = generate_floor_plan(request.requirements)
+        return {
+            "status": "success",
+            "design": design,
+            "message": f"Generated {request.requirements.style} style design with {request.requirements.bedrooms} bedrooms and {request.requirements.bathrooms} bathrooms"
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
 if __name__ == "__main__":
-    print("Starting server on http://127.0.0.1:4000")
-    print("API documentation available at http://127.0.0.1:4000/docs")
-    uvicorn.run(
-        "test_server:app",
-        host="127.0.0.1",
-        port=4000,
-        reload=True
-    ) 
+    print("Starting Claude MCP Test Server...")
+    print("Server will be available at: http://localhost:8000")
+    print("API documentation available at: http://localhost:8000/docs")
+    try:
+        uvicorn.run(
+            app,
+            host="0.0.0.0",
+            port=8000,
+            reload=True,
+            log_level="info"
+        )
+    except Exception as e:
+        print(f"Error starting server: {str(e)}")
+        print("Please check if port 8000 is available and try again.") 

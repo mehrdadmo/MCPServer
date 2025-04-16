@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RevitAddIns>
+  <AddIn Type="Command">
+    <Assembly>C:\Users\%USERNAME%\AppData\Roaming\Autodesk\Revit\Addins\2025\ClaudeMCP_RevitAddin.dll</Assembly>
+    <ClientId>a1b2c3d4-e5f6-7890-abcd-ef1234567890</ClientId>
+    <FullClassName>ClaudeMCP_RevitAddin.ClaudeMCPCommand</FullClassName>
+    <Text>Ask Claude</Text>
+    <Description>Analyze Revit elements using Claude AI</Description>
+    <VendorId>ClaudeMCP</VendorId>
+    <VendorDescription>Claude MCP Revit Integration</VendorDescription>
+  </AddIn>
+</RevitAddIns> 
