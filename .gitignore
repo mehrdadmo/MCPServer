@@ -6,7 +6,6 @@ __pycache__/
 .Python
 build/
 develop-eggs/
-dist/
 downloads/
 eggs/
 .eggs/
@@ -19,6 +18,40 @@ wheels/
 *.egg-info/
 .installed.cfg
 *.egg
+
+# Distribution / packaging
+!ClaudeMCP_Revit2025_*.zip
+*.zip
+*.tar.gz
+*.tgz
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+
+# Environment
+.env
+.venv
+env/
+venv/
+ENV/
+
+# Logs
+*.log
+
+# Test cache
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Revit specific
+*.rfa
+*.rvt
+*.rte
+*.adsklib
 
 # Virtual Environment
 venv/
