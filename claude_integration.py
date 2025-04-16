@@ -1,4 +1,4 @@
-from anthropic import Anthropic
+from anthropic import Anthropic, AnthropicBedrock
 import os
 from typing import Dict, Any, List
 import json
@@ -9,17 +9,117 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # Configure logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    filename=os.path.join(os.path.dirname(__file__), 'claude_mcp.log'),
+    format='%(asctime)s - %(levelname)s - %(message)s'
+)
 logger = logging.getLogger(__name__)
 
 class ClaudeIntegration:
     def __init__(self):
-        self.client = Anthropic(api_key=os.getenv("ANTHROPIC_API_KEY"))
-        self.model = "claude-3-opus-20240229"
+        api_key = os.getenv("ANTHROPIC_API_KEY")
+        if not api_key:
+            raise ValueError("ANTHROPIC_API_KEY environment variable is required")
+            
+        self.client = Anthropic(api_key=api_key)
+        self.model = os.getenv("CLAUDE_MODEL", "claude-3-opus-20240229")
+        self.max_tokens = int(os.getenv("MAX_TOKENS", "4000"))
+        logger.info(f"Claude Integration initialized with model: {self.model}")
     
     async def generate_model(self, description: str, requirements: dict) -> dict:
-        """Generate a Revit model based on natural language description"""
+        """Generate a Revit model based on natural language description using Claude MCP"""
         try:
+            # Prepare the MCP context for Claude
+            tools = [{
+                "name": "revit_model_generator",
+                "description": "Tool for generating Revit models from natural language",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "levels": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "elevation": {"type": "number"},
+                                    "name": {"type": "string"}
+                                },
+                                "required": ["elevation", "name"]
+                            }
+                        },
+                        "walls": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "start": {
+                                        "type": "object",
+                                        "properties": {
+                                            "x": {"type": "number"},
+                                            "y": {"type": "number"}
+                                        },
+                                        "required": ["x", "y"]
+                                    },
+                                    "end": {
+                                        "type": "object",
+                                        "properties": {
+                                            "x": {"type": "number"},
+                                            "y": {"type": "number"}
+                                        },
+                                        "required": ["x", "y"]
+                                    },
+                                    "type_id": {"type": "integer"},
+                                    "level_id": {"type": "integer"}
+                                },
+                                "required": ["start", "end", "type_id", "level_id"]
+                            }
+                        },
+                        "rooms": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "name": {"type": "string"},
+                                    "boundary": {
+                                        "type": "array",
+                                        "items": {
+                                            "type": "object",
+                                            "properties": {
+                                                "x": {"type": "number"},
+                                                "y": {"type": "number"}
+                                            },
+                                            "required": ["x", "y"]
+                                        }
+                                    }
+                                },
+                                "required": ["name", "boundary"]
+                            }
+                        },
+                        "openings": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "type_id": {"type": "integer"},
+                                    "location": {
+                                        "type": "object",
+                                        "properties": {
+                                            "x": {"type": "number"},
+                                            "y": {"type": "number"}
+                                        },
+                                        "required": ["x", "y"]
+                                    },
+                                    "host_id": {"type": "integer"}
+                                },
+                                "required": ["type_id", "location", "host_id"]
+                            }
+                        }
+                    },
+                    "required": ["levels", "walls"]
+                }
+            }]
+
             # Prepare the prompt for Claude
             prompt = f"""You are an expert architect and Revit specialist. 
             Please generate a detailed floor plan based on the following requirements:
@@ -27,67 +127,55 @@ class ClaudeIntegration:
             Description: {description}
             Requirements: {json.dumps(requirements, indent=2)}
             
-            Generate a JSON response with the following structure:
-            {{
-                "levels": [
-                    {{
-                        "elevation": float,
-                        "name": str
-                    }}
-                ],
-                "walls": [
-                    {{
-                        "start": {{"x": float, "y": float}},
-                        "end": {{"x": float, "y": float}},
-                        "type_id": int,
-                        "level_id": int
-                    }}
-                ],
-                "rooms": [
-                    {{
-                        "name": str,
-                        "boundary": [
-                            {{"x": float, "y": float}},
-                            ...
-                        ]
-                    }}
-                ],
-                "openings": [
-                    {{
-                        "type_id": int,
-                        "location": {{"x": float, "y": float}},
-                        "host_id": int
-                    }}
-                ]
-            }}
+            Use the revit_model_generator tool to generate a structured model that can be imported into Revit.
+            The model should include levels, walls, rooms, and openings.
             
-            Ensure all measurements are in meters and the design follows architectural best practices."""
+            Ensure all measurements are in meters and the design follows architectural best practices.
+            """
 
-            # Call Claude API
+            # Call Claude API with tool use
             response = self.client.messages.create(
                 model=self.model,
-                max_tokens=4000,
+                max_tokens=self.max_tokens,
+                tools=tools,
                 messages=[{"role": "user", "content": prompt}]
             )
 
-            # Parse the response
+            # Parse the tool use response
+            tool_outputs = []
+            for content in response.content:
+                if content.type == "tool_use":
+                    tool_outputs.append(content.input)
+
+            # If we got tool output, return it
+            if tool_outputs:
+                return tool_outputs[0]
+            
+            # Otherwise, parse text response as JSON (fallback)
             try:
-                design = json.loads(response.content[0].text)
-                return design
+                for content in response.content:
+                    if content.type == "text":
+                        # Find JSON in the text
+                        text = content.text
+                        start = text.find('{')
+                        end = text.rfind('}') + 1
+                        if start != -1 and end != 0:
+                            json_str = text[start:end]
+                            return json.loads(json_str)
+                
+                # If no JSON found, use fallback
+                return self._generate_fallback_floor_plan(requirements)
             except json.JSONDecodeError:
-                # If Claude returns a text description instead of JSON,
-                # we'll use our fallback floor plan generator
                 return self._generate_fallback_floor_plan(requirements)
 
         except Exception as e:
-            print(f"Error generating model with Claude: {str(e)}")
+            logger.error(f"Error generating model with Claude: {str(e)}")
             # Fallback to our basic floor plan generator
             return self._generate_fallback_floor_plan(requirements)
 
     def _generate_fallback_floor_plan(self, requirements: dict) -> dict:
         """Fallback floor plan generator if Claude fails"""
         # This is a simplified version of the floor plan generator
-        # that was previously in test_server.py
         total_area = requirements.get("area", 120)
         bedrooms = requirements.get("bedrooms", 2)
         bathrooms = requirements.get("bathrooms", 1)
@@ -110,40 +198,99 @@ class ClaudeIntegration:
         }
     
     async def extract_requirements(self, description: str) -> Dict[str, Any]:
-        """Extract requirements from natural language description"""
+        """Extract requirements from natural language description using Claude"""
         try:
+            # Define schema for requirements extraction
+            tools = [{
+                "name": "extract_requirements",
+                "description": "Extract architectural requirements from natural language description",
+                "input_schema": {
+                    "type": "object",
+                    "properties": {
+                        "total_area": {"type": "number"},
+                        "rooms": {
+                            "type": "array",
+                            "items": {
+                                "type": "object",
+                                "properties": {
+                                    "type": {"type": "string"},
+                                    "count": {"type": "integer"},
+                                    "min_area": {"type": "number"},
+                                    "max_area": {"type": "number"}
+                                },
+                                "required": ["type", "count"]
+                            }
+                        },
+                        "style": {"type": "string"},
+                        "constraints": {
+                            "type": "object",
+                            "properties": {
+                                "min_room_area": {"type": "number"},
+                                "max_room_area": {"type": "number"},
+                                "ceiling_height": {"type": "number"}
+                            }
+                        }
+                    },
+                    "required": ["total_area", "rooms"]
+                }
+            }]
+            
             prompt = f"""
             Extract architectural requirements from the following description:
             
             {description}
             
-            Return a JSON object with the following structure:
-            {{
-                "total_area": number,
-                "rooms": [
-                    {{
-                        "type": "string",
-                        "count": number,
-                        "min_area": number,
-                        "max_area": number
-                    }}
-                ],
-                "style": "string",
-                "constraints": {{
-                    "min_room_area": number,
-                    "max_room_area": number,
-                    "ceiling_height": number
-                }}
-            }}
+            Use the extract_requirements tool to provide a structured representation of the requirements.
             """
             
-            response = await self._get_claude_response(prompt)
+            # Call Claude API with tool use
+            response = self.client.messages.create(
+                model=self.model,
+                max_tokens=1000,
+                tools=tools,
+                messages=[{"role": "user", "content": prompt}]
+            )
             
-            # Extract JSON from response
-            json_str = response[response.find("{"):response.rfind("}")+1]
-            requirements = json.loads(json_str)
+            # Parse the tool use response
+            tool_outputs = []
+            for content in response.content:
+                if content.type == "tool_use":
+                    tool_outputs.append(content.input)
             
-            return requirements
+            # If we got tool output, return it
+            if tool_outputs:
+                return tool_outputs[0]
+            
+            # Fallback to parsing text
+            default_requirements = {
+                "total_area": 120,
+                "rooms": [
+                    {"type": "bedroom", "count": 2, "min_area": 15},
+                    {"type": "bathroom", "count": 1, "min_area": 8},
+                    {"type": "living_room", "count": 1, "min_area": 30}
+                ],
+                "style": "modern",
+                "constraints": {
+                    "min_room_area": 8,
+                    "ceiling_height": 2.4
+                }
+            }
+            
+            return default_requirements
+            
         except Exception as e:
             logger.error(f"Error extracting requirements: {str(e)}")
-            raise 
+            # Return default requirements
+            return {
+                "total_area": 120,
+                "rooms": [
+                    {"type": "bedroom", "count": 2, "min_area": 15},
+                    {"type": "bathroom", "count": 1, "min_area": 8},
+                    {"type": "living_room", "count": 1, "min_area": 30}
+                ],
+                "style": "modern",
+                "constraints": {
+                    "min_room_area": 8,
+                    "ceiling_height": 2.4
+                }
+            } 

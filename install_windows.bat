@@ -1,41 +1,38 @@
 @echo off
-echo Claude MCP Revit Plugin Installer
-echo ===============================
+echo Installing Claude MCP Revit Plugin for Windows...
 
-REM Check if running as administrator
+:: Check if running as administrator
 net session >nul 2>&1
-if %errorLevel% == 0 (
-    echo Running as administrator
-) else (
-    echo Please run this installer as administrator
-    echo Right-click and select "Run as administrator"
+if %errorLevel% neq 0 (
+    echo Error: This installation requires administrator privileges.
+    echo Please right-click on install_windows.bat and select "Run as administrator".
     pause
     exit /b 1
 )
 
-REM Set installation directory
-set INSTALL_DIR=%APPDATA%\Autodesk\Revit\Autodesk Revit 2025\Addins\ClaudeMCP
-echo Creating installation directory: %INSTALL_DIR%
+:: Create target directories
+set REVIT_ADDINS=%APPDATA%\Autodesk\Revit\Addins
+set TARGET_DIR=%REVIT_ADDINS%\2025\ClaudeMCP
 
-REM Create directory if it doesn't exist
-if not exist "%INSTALL_DIR%" mkdir "%INSTALL_DIR%"
+if not exist "%REVIT_ADDINS%\2025" mkdir "%REVIT_ADDINS%\2025"
+if not exist "%TARGET_DIR%" mkdir "%TARGET_DIR%"
 
-REM Copy files
-echo Copying plugin files...
-xcopy /E /I /Y "revit_plugin" "%INSTALL_DIR%\revit_plugin"
-copy /Y "ClaudeMCP.addin" "%INSTALL_DIR%"
-copy /Y "requirements.txt" "%INSTALL_DIR%"
-copy /Y "INSTALL.txt" "%INSTALL_DIR%"
+:: Copy files to target directory
+echo Copying files to %TARGET_DIR%...
+xcopy /E /I /Y dist\ClaudeMCP\* "%TARGET_DIR%"
+copy ClaudeMCP.addin "%REVIT_ADDINS%\2025\"
 
-REM Install Python dependencies
-echo Installing Python dependencies...
-cd "%INSTALL_DIR%"
+:: Install required Python packages
+echo Installing required Python packages...
 pip install -r requirements.txt
 
 echo.
-echo Installation complete!
+echo Installation completed successfully.
 echo.
-echo Please start Revit 2025 to use the plugin.
-echo The plugin will appear in the Add-ins tab.
+echo Next steps:
+echo 1. Make sure the Revit Python Shell is installed
+echo 2. Start or restart Revit 2025
+echo 3. The plugin should appear in the Add-ins tab
 echo.
+
 pause 

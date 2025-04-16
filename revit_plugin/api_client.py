@@ -13,36 +13,56 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
-    filename=os.getenv("LOG_FILE", "revit_plugin.log"),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
+    filename=os.path.join(os.path.dirname(__file__), 'claude_mcp.log'),
+    format='%(asctime)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
 class APIClient:
     def __init__(self):
-        self.base_url = os.getenv('MCP_SERVER_URL', 'http://localhost:8000')
-        logger.info(f"Initializing API client with server URL: {self.base_url}")
-
+        # Get server URL from environment variable, default to localhost
+        self.server_url = os.getenv("MCP_SERVER_URL", "http://localhost:8000")
+        logger.info(f"Initializing API client with server URL: {self.server_url}")
+    
     def process_revit_query(self, elements_data):
+        """Send Revit elements to the server for processing"""
         try:
+            # Extract project information from Revit document if available
+            project_info = {}
+            
+            # Prepare the request
+            payload = {
+                "elements": elements_data,
+                "project_info": project_info
+            }
+            
+            # Log the request
+            logger.info(f"Sending query to server with {len(elements_data)} elements")
+            
+            # Make API call
             response = requests.post(
-                f"{self.base_url}/process_revit_query",
-                json={"elements": elements_data}
+                f"{self.server_url}/process_revit_query",
+                json=payload
             )
             response.raise_for_status()
-            return response.json().get('response', 'No response from server')
+            result = response.json()
+            
+            return result.get('response', 'No response from server')
         except Exception as e:
             logger.error(f"Error processing Revit query: {str(e)}")
             return f"Error communicating with server: {str(e)}"
-
+    
     def generate_model(self, description: str, requirements: Dict[str, Any]) -> Dict[str, Any]:
         """Request model generation from the server"""
         try:
+            logger.info(f"Requesting model generation for: {description}")
+            
             response = requests.post(
-                f"{self.base_url}/generate_revit_model",
+                f"{self.server_url}/generate_revit_model",
                 json={
                     "description": description,
-                    "requirements": requirements
+                    "requirements": requirements,
+                    "version": "1.0"
                 }
             )
             response.raise_for_status()
@@ -50,12 +70,14 @@ class APIClient:
         except Exception as e:
             logger.error(f"Error generating model: {str(e)}")
             raise
-
-    def check_server_health(self):
+    
+    def check_server_health(self) -> bool:
+        """Check if the server is running and healthy"""
         try:
-            response = requests.get(f"{self.base_url}/health")
+            response = requests.get(f"{self.server_url}/health")
             return response.status_code == 200
-        except:
+        except Exception as e:
+            logger.error(f"Health check failed: {str(e)}")
             return False
 
 class ClaudeMCPClient:

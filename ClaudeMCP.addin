@@ -2,28 +2,28 @@
 <RevitAddIns>
   <AddIn Type="Command">
     <Name>Claude MCP Integration</Name>
-    <Assembly>revit_plugin/revit_commands.py</Assembly>
+    <Assembly>ClaudeMCP\RpsAddin.dll</Assembly>
     <ClientId>8f3c0b1e-4a5d-4c8f-9b2a-1c3d4e5f6a7b</ClientId>
-    <FullClassName>revit_plugin.revit_commands.ClaudeRevitCommand</FullClassName>
-    <Text>Ask Claude</Text>
-    <Description>Integrate Claude AI with Revit</Description>
+    <FullClassName>RpsAddin.RpsAddIn</FullClassName>
     <VendorId>ClaudeMCP</VendorId>
     <VendorDescription>Claude MCP Revit Integration</VendorDescription>
-    <MinRevitVersion>2024</MinRevitVersion>
-    <MaxRevitVersion>2025</MaxRevitVersion>
+    <Text>Ask Claude</Text>
+    <Description>Integrate Claude AI with Revit</Description>
     <VisibilityMode>AlwaysVisible</VisibilityMode>
+    <LanguageType>Unknown</LanguageType>
+    <AddInId>A4EF9B97-C89A-4638-8A8F-7CA6BC8A3BAF</AddInId>
   </AddIn>
   <AddIn Type="Command">
     <Name>AI Design</Name>
-    <Assembly>revit_plugin/ai_design_command.py</Assembly>
+    <Assembly>ClaudeMCP\RpsAddin.dll</Assembly>
     <ClientId>9e4d2c1b-5f6e-4a3d-8c7b-1d2e3f4a5b6c</ClientId>
-    <FullClassName>revit_plugin.ai_design_command.AIDesignCommand</FullClassName>
-    <Text>AI Design</Text>
-    <Description>Generate Revit models using natural language</Description>
+    <FullClassName>RpsAddin.RpsAddIn</FullClassName>
     <VendorId>ClaudeMCP</VendorId>
     <VendorDescription>Claude MCP Revit Integration</VendorDescription>
-    <MinRevitVersion>2024</MinRevitVersion>
-    <MaxRevitVersion>2025</MaxRevitVersion>
+    <Text>AI Design</Text>
+    <Description>Generate Revit models using natural language</Description>
     <VisibilityMode>AlwaysVisible</VisibilityMode>
+    <LanguageType>Unknown</LanguageType>
+    <AddInId>B5EF9B97-C89A-4638-8A8F-7CA6BC8A3BAF</AddInId>
   </AddIn>
 </RevitAddIns> 

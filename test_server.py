@@ -1,14 +1,14 @@
 from fastapi import FastAPI, HTTPException, WebSocket
 from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
-from typing import List, Optional, Dict, Any
+from pydantic import BaseModel, Field
+from typing import List, Optional, Dict, Any, Union
 import uvicorn
 import logging
 from dotenv import load_dotenv
 import os
 from claude_integration import ClaudeIntegration
 import json
-import random
+import asyncio
 
 # Load environment variables
 load_dotenv()
@@ -16,15 +16,15 @@ load_dotenv()
 # Configure logging
 logging.basicConfig(
     level=os.getenv("LOG_LEVEL", "INFO"),
-    filename=os.getenv("LOG_FILE", "app.log"),
+    filename=os.getenv("LOG_FILE", "mcp_server.log"),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 logger = logging.getLogger(__name__)
 
 # Initialize FastAPI app with docs
 app = FastAPI(
-    title="Claude MCP Test Server",
-    description="Server for integrating Claude AI with Autodesk Revit",
+    title="Claude MCP Server",
+    description="MCP Server for integrating Claude AI with Autodesk Revit",
     version="1.0.0",
     docs_url="/docs",
     redoc_url="/redoc"
@@ -43,51 +43,77 @@ app.add_middleware(
 claude = ClaudeIntegration()
 
 # Data models
+class Point2D(BaseModel):
+    x: float
+    y: float
+
+class ElementParameter(BaseModel):
+    name: str
+    value: Union[str, float, int, bool]
+    
 class RevitElement(BaseModel):
     id: str
+    name: Optional[str] = None
+    category: Optional[str] = None
     type: str
-    parameters: Dict[str, Any]
+    parameters: Optional[Dict[str, Any]] = {}
 
 class ProjectInfo(BaseModel):
-    name: str
-    number: str
+    name: Optional[str] = None
+    number: Optional[str] = None
+    client: Optional[str] = None
+    address: Optional[str] = None
 
-class RevitQuery(BaseModel):
-    prompt: str
-    revit_elements: List[RevitElement]
-    project_info: ProjectInfo
+class RevitQueryRequest(BaseModel):
+    elements: List[RevitElement]
+    project_info: Optional[ProjectInfo] = None
+    prompt: Optional[str] = "Analyze these Revit elements"
 
-class RevitResponse(BaseModel):
+class RevitQueryResponse(BaseModel):
     response: str
-    suggested_actions: List[str]
+    suggested_actions: Optional[List[str]] = None
     error: Optional[str] = None
 
 class HealthResponse(BaseModel):
     status: str
     version: str
-    environment: str
+    claude_model: str
+
+class Wall(BaseModel):
+    start: Point2D
+    end: Point2D
+    type_id: int
+    level_id: int
+    
+class Level(BaseModel):
+    elevation: float
+    name: str
+    
+class Room(BaseModel):
+    name: str
+    boundary: List[Point2D]
+    
+class Opening(BaseModel):
+    type_id: int
+    location: Point2D
+    host_id: int
+    
+class RevitModel(BaseModel):
+    levels: List[Level]
+    walls: List[Wall]
+    rooms: Optional[List[Room]] = Field(default_factory=list)
+    openings: Optional[List[Opening]] = Field(default_factory=list)
 
 class ModelGenerationRequest(BaseModel):
     description: str
     requirements: Dict[str, Any]
-    constraints: Optional[Dict[str, Any]] = None
+    version: Optional[str] = "1.0"
 
 class ModelGenerationResponse(BaseModel):
     success: bool
-    model_data: Dict[str, Any]
+    model_data: RevitModel
     message: str
     error: Optional[str] = None
-
-class DesignRequirements(BaseModel):
-    area: float
-    bedrooms: int
-    bathrooms: int
-    style: str
-    additional_requirements: str
-
-class DesignRequest(BaseModel):
-    action: str
-    requirements: DesignRequirements
 
 # WebSocket connections
 active_connections: List[WebSocket] = []
@@ -95,7 +121,7 @@ active_connections: List[WebSocket] = []
 @app.get("/", response_model=Dict[str, str])
 async def root():
     """Root endpoint returning welcome message"""
-    return {"message": "Welcome to Claude MCP Test Server"}
+    return {"message": "Welcome to Claude MCP Server"}
 
 @app.get("/health", response_model=HealthResponse)
 async def health_check():
@@ -103,44 +129,68 @@ async def health_check():
     return HealthResponse(
         status="healthy",
         version="1.0.0",
-        environment=os.getenv("ENVIRONMENT", "development")
+        claude_model=claude.model
     )
 
-@app.post("/process_revit_query", response_model=RevitResponse)
-async def process_revit_query(query: RevitQuery):
-    """Process Revit-related queries using Claude AI"""
+@app.post("/process_revit_query", response_model=RevitQueryResponse)
+async def process_revit_query(query: RevitQueryRequest):
+    """Process Revit-related queries using Claude AI MCP"""
     try:
-        logger.info(f"Processing Revit query: {query.prompt}")
+        logger.info(f"Processing Revit query with {len(query.elements)} elements")
         
-        # Simulate Claude's analysis
-        analysis = {
-            "summary": f"Analysis of {len(query.revit_elements)} Revit elements",
-            "elements_analysis": [],
-            "recommendations": []
-        }
-        
-        # Analyze each element
-        for element in query.revit_elements:
-            element_analysis = {
-                "id": element.id,
-                "type": element.type,
-                "analysis": f"Analyzing {element.type} with parameters: {element.parameters}"
-            }
-            analysis["elements_analysis"].append(element_analysis)
+        # Prepare prompt for Claude
+        elements_description = []
+        for element in query.elements:
+            element_desc = f"- {element.category} ({element.type}): {element.name} (ID: {element.id})"
+            if element.parameters:
+                param_list = [f"{k}: {v}" for k, v in element.parameters.items()]
+                element_desc += f"\n  Parameters: {', '.join(param_list)}"
+            elements_description.append(element_desc)
             
-            # Add some mock recommendations
-            if element.type == "Wall":
-                analysis["recommendations"].append(
-                    f"Consider optimizing wall thickness for {element.parameters.get('Material', 'unknown material')}"
-                )
-            elif element.type == "Door":
-                analysis["recommendations"].append(
-                    f"Check if door dimensions meet accessibility standards"
-                )
+        elements_text = "\n".join(elements_description)
         
-        return RevitResponse(
-            response=analysis["summary"],
-            suggested_actions=analysis["recommendations"],
+        project_info_text = ""
+        if query.project_info:
+            project_info_text = f"""
+Project Information:
+- Name: {query.project_info.name}
+- Number: {query.project_info.number}
+- Client: {query.project_info.client}
+- Address: {query.project_info.address}
+"""
+
+        # Call Claude with prompt
+        prompt = f"""
+{query.prompt}
+
+Elements in the Revit model:
+{elements_text}
+
+{project_info_text}
+
+Provide a detailed analysis of these elements including any potential issues, improvements, 
+or opportunities. Include specific suggestions for actions.
+"""
+
+        # For demo purposes, simulate Claude's analysis
+        # In production, you would call Claude API here
+        analysis = f"Analysis of {len(query.elements)} Revit elements"
+        suggestions = []
+        
+        for element in query.elements:
+            if element.category == "Walls":
+                suggestions.append(f"Optimize wall thickness for better energy efficiency")
+            elif element.category == "Doors":
+                suggestions.append(f"Check if door dimensions meet accessibility standards")
+            elif element.category == "Windows":
+                suggestions.append(f"Consider adding solar shading to south-facing windows")
+                
+        if not suggestions:
+            suggestions = ["Improve documentation", "Check for design consistency", "Verify materials specifications"]
+        
+        return RevitQueryResponse(
+            response=analysis,
+            suggested_actions=suggestions,
             error=None
         )
         
@@ -164,39 +214,24 @@ async def websocket_endpoint(websocket: WebSocket):
     finally:
         active_connections.remove(websocket)
 
-@app.get("/api/revit/elements", response_model=Dict)
-async def get_revit_elements():
-    """Get available Revit elements"""
-    return {
-        "walls": ["Basic Wall", "Curtain Wall", "Stacked Wall"],
-        "floors": ["Basic Floor", "Slab", "Foundation"],
-        "roofs": ["Basic Roof", "Extrusion Roof"]
-    }
-
-@app.get("/api/revit/properties", response_model=Dict)
-async def get_revit_properties():
-    """Get available Revit properties"""
-    return {
-        "dimensions": ["Length", "Width", "Height", "Area"],
-        "materials": ["Concrete", "Steel", "Wood", "Glass"],
-        "parameters": ["Mark", "Comments", "Phase"]
-    }
-
 @app.post("/generate_revit_model", response_model=ModelGenerationResponse)
 async def generate_revit_model(request: ModelGenerationRequest):
-    """Generate Revit model based on natural language description"""
+    """Generate Revit model based on natural language description using Claude MCP"""
     try:
         logger.info(f"Generating Revit model for: {request.description}")
         
-        # Generate model using Claude
+        # Generate model using Claude MCP
         model_data = await claude.generate_model(
             description=request.description,
             requirements=request.requirements
         )
         
+        # Convert model data to Pydantic model for validation
+        revit_model = RevitModel(**model_data)
+        
         return ModelGenerationResponse(
             success=True,
-            model_data=model_data,
+            model_data=revit_model,
             message="Model generated successfully",
             error=None
         )
@@ -205,134 +240,12 @@ async def generate_revit_model(request: ModelGenerationRequest):
         logger.error(f"Error generating model: {str(e)}")
         return ModelGenerationResponse(
             success=False,
-            model_data={},
+            model_data=RevitModel(levels=[], walls=[]),
             message="Failed to generate model",
             error=str(e)
         )
 
-def generate_floor_plan(requirements: DesignRequirements) -> Dict[str, Any]:
-    # Calculate room sizes based on total area
-    total_area = requirements.area
-    bedroom_area = total_area * 0.3 / requirements.bedrooms
-    bathroom_area = total_area * 0.2 / requirements.bathrooms
-    living_area = total_area * 0.5
-
-    # Generate walls
-    walls = []
-    wall_types = {
-        "exterior": 1,
-        "interior": 2
-    }
-
-    # Create exterior walls
-    length = (total_area ** 0.5) * 1.2  # Approximate length of the house
-    width = total_area / length
-
-    # Exterior walls
-    walls.extend([
-        {"start": {"x": 0, "y": 0}, "end": {"x": length, "y": 0}, "type_id": wall_types["exterior"], "level_id": 1},
-        {"start": {"x": length, "y": 0}, "end": {"x": length, "y": width}, "type_id": wall_types["exterior"], "level_id": 1},
-        {"start": {"x": length, "y": width}, "end": {"x": 0, "y": width}, "type_id": wall_types["exterior"], "level_id": 1},
-        {"start": {"x": 0, "y": width}, "end": {"x": 0, "y": 0}, "type_id": wall_types["exterior"], "level_id": 1}
-    ])
-
-    # Create interior walls for bedrooms
-    bedroom_width = (bedroom_area ** 0.5) * 0.8
-    bedroom_length = bedroom_area / bedroom_width
-
-    for i in range(requirements.bedrooms):
-        x_offset = length * 0.2 + i * (bedroom_length + 2)
-        walls.extend([
-            {"start": {"x": x_offset, "y": 0}, "end": {"x": x_offset, "y": bedroom_width}, "type_id": wall_types["interior"], "level_id": 1},
-            {"start": {"x": x_offset, "y": bedroom_width}, "end": {"x": x_offset + bedroom_length, "y": bedroom_width}, "type_id": wall_types["interior"], "level_id": 1},
-            {"start": {"x": x_offset + bedroom_length, "y": bedroom_width}, "end": {"x": x_offset + bedroom_length, "y": 0}, "type_id": wall_types["interior"], "level_id": 1}
-        ])
-
-    # Create rooms
-    rooms = []
-    for i in range(requirements.bedrooms):
-        x_offset = length * 0.2 + i * (bedroom_length + 2)
-        rooms.append({
-            "name": f"Bedroom {i+1}",
-            "boundary": [
-                {"x": x_offset, "y": 0},
-                {"x": x_offset + bedroom_length, "y": 0},
-                {"x": x_offset + bedroom_length, "y": bedroom_width},
-                {"x": x_offset, "y": bedroom_width}
-            ]
-        })
-
-    # Create bathroom
-    bathroom_width = (bathroom_area ** 0.5) * 0.8
-    bathroom_length = bathroom_area / bathroom_width
-    x_offset = length * 0.8
-    rooms.append({
-        "name": "Bathroom",
-        "boundary": [
-            {"x": x_offset, "y": width - bathroom_width},
-            {"x": x_offset + bathroom_length, "y": width - bathroom_width},
-            {"x": x_offset + bathroom_length, "y": width},
-            {"x": x_offset, "y": width}
-        ]
-    })
-
-    # Create openings (doors and windows)
-    openings = []
-    door_type = 3  # Assuming this is the door type ID
-    window_type = 4  # Assuming this is the window type ID
-
-    # Add doors to bedrooms
-    for i in range(requirements.bedrooms):
-        x_offset = length * 0.2 + i * (bedroom_length + 2)
-        openings.append({
-            "type_id": door_type,
-            "location": {"x": x_offset + bedroom_length/2, "y": 0},
-            "host_id": walls[i*3]["type_id"]  # Reference to the wall
-        })
-
-    # Add windows
-    window_spacing = length / 4
-    for i in range(3):  # Add 3 windows to exterior walls
-        openings.append({
-            "type_id": window_type,
-            "location": {"x": window_spacing * (i+1), "y": 0},
-            "host_id": walls[0]["type_id"]
-        })
-
-    return {
-        "levels": [{"elevation": 0}],
-        "walls": walls,
-        "rooms": rooms,
-        "openings": openings
-    }
-
-@app.post("/generate")
-async def generate_design(request: DesignRequest):
-    if request.action != "generate_design":
-        raise HTTPException(status_code=400, detail="Invalid action")
-
-    try:
-        design = generate_floor_plan(request.requirements)
-        return {
-            "status": "success",
-            "design": design,
-            "message": f"Generated {request.requirements.style} style design with {request.requirements.bedrooms} bedrooms and {request.requirements.bathrooms} bathrooms"
-        }
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e))
-
 if __name__ == "__main__":
-    print("Starting Claude MCP Test Server...")
-    print("Server will be available at: http://localhost:8000")
-    print("API documentation available at: http://localhost:8000/docs")
-    try:
-        uvicorn.run(
-            app,
-            host="0.0.0.0",
-            port=8000,
-            reload=True,
-            log_level="info"
-        )
-    except Exception as e:
-        print(f"Error starting server: {str(e)}")
-        print("Please check if port 8000 is available and try again.") 
+    port = int(os.getenv("PORT", 8000))
+    host = os.getenv("HOST", "0.0.0.0")
+    uvicorn.run("test_server:app", host=host, port=port, reload=True) 
